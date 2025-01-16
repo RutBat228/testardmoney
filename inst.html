@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenWrt Routing Configuration</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.0/themes/prism.css" />
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            background-color: #1e1e1e;
+            color: #f9f9f9;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            background: #2a2a2a;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        pre {
+            background: #333;
+            padding: 10px;
+            border: 1px solid #444;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        h1, h2, h3 {
+            color: #f9f9f9;
+        }
+        code {
+            background: #444;
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.0/prism.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>Инструкция по точечной маршрутизации в OpenWrt с использованием Xray</h1>
+
+        <h2>Установка необходимых пакетов</h2>
+        <pre><code class="language-shell">opkg update
+opkg list-upgradable | cut -f 1 -d " " | xargs opkg upgrade
+opkg install nano-full xray-core kmod-nft-tproxy</code></pre>
+
+        <h2>Конфигурация Xray (/etc/xray/config.yaml)</h2>
+
+        <h3>Входящие подключения (inbounds)</h3>
+        <pre><code class="language-yaml">
+inbounds:
+  - listen: 192.168.1.1
+    tag: all-in
+    port: 1083
+    protocol: dokodemo-door
+    settings:
+      network: tcp,udp
+      followRedirect: true
+    streamSettings:
+      sockopt:
+        tproxy: tproxy
+    sniffing:
+      enabled: true
+      metadataOnly: false
+      destOverride:
+        - fakedns
+  - listen: 127.0.0.1
+    tag: dns-in
+    port: 5353
+    protocol: dokodemo-door
+    settings:
+      address: 192.168.1.1
+      network: tcp,udp
+routing:
+  domainStrategy: AsIs
+  domainMatcher: hybrid
+  rules:
+    - type: field
+      inboundTag:
+        - dns-in
+      port: 5353
+      outboundTag: dns-out
+    - type: field
+      inboundTag:
+        - all-in
+      outboundTag: proxy
+outbounds:
+  - protocol: dns
+    tag: dns-out
+    streamSettings:
+      sockopt:
+        mark: 2
+  - protocol: vless
+    tag: proxy
+    settings:
+      vnext:
+        - address: ardmoney.ru
+          port: 8443
+          users:
+            - id: 181669b5-3eee-4ca8-b5a9-a3325178c91c
+              flow: xtls-rprx-vision
+              encryption: none
+    streamSettings:
+      network: tcp
+      security: reality
+      realitySettings:
+        fingerprint: chrome
+        serverName: ardmoney.ru
+        publicKey: z2rLcX14sNLzJCoRlUz6fiydjlWV9YQhjHLZAmXxL3M
+        shortId: 911059b0ee,db9650d7b77605,7e89d175,78efc31ce9cc4a7c,43700e,feb7e9bcb760,c0fa,5a
+      sockopt:
+        mark: 2</code></pre>
+
+        <h3>Настройки DNS</h3>
+        <pre><code class="language-yaml">dns:
+  servers:
+    - fakedns
+    - address: fakedns
+      skipFallback: true
+  queryStrategy: UseIPv4
+fakedns:
+  ipPool: 100.64.0.0/10
+  poolSize: 65535</code></pre>
+
+        <h2>Настройка Dnsmasq (/etc/dnsmasq.servers)</h2>
+        <pre><code class="language-shell"># Netflix
+server=/netflix.com/127.0.0.1#5353
+
+# ip.me
+server=/ip.me/127.0.0.1#5353
+
+# YouTube
+server=/youtube.com/127.0.0.1#5353
+server=/youtu.be/127.0.0.1#5353
+server=/googlevideo.com/127.0.0.1#5353
+server=/youtube.googleapis.com/127.0.0.1#5353
+server=/youtubei.googleapis.com/127.0.0.1#5353
+
+# Google
+server=/ggpht.com/127.0.0.1#5353
+server=/ytimg.com/127.0.0.1#5353
+server=/doubleclick.net/127.0.0.1#5353
+server=/gemini.google.com/127.0.0.1#5353
+server=/play.google.com/127.0.0.1#5353
+server=/news.google.com/127.0.0.1#5353
+
+# Instagram
+server=/instagram.com/127.0.0.1#5353
+server=/cdninstagram.com/127.0.0.1#5353
+server=/fbcdn.net/127.0.0.1#5353
+server=/fb.com/127.0.0.1#5353
+server=/facebook.com/127.0.0.1#5353
+
+# Twitter
+server=/twitter.com/127.0.0.1#5353
+server=/x.com/127.0.0.1#5353
+server=/twimg.com/127.0.0.1#5353
+server=/t.co/127.0.0.1#5353
+
+# ChatGPT
+server=/chatgpt.com/127.0.0.1#5353
+server=/openai.com/127.0.0.1#5353</code></pre>
+
+        <h2>Настройка маршрутизации (/etc/rc.local)</h2>
+        <pre><code class="language-shell">#!/bin/sh -e
+
+nft 'add table xray'
+
+# Добавление цепочек
+nft 'add chain xray prerouting { type filter hook prerouting priority mangle; }'
+
+# Добавление набора для IP
+nft 'add set xray proxy_ip { type ipv4_addr; flags interval; }'
+
+# Проксирование IP-адресов
+nft 'add element xray proxy_ip { 
+  100.24.86.190, 104.18.75.225, 104.18.76.225, 107.23.207.152, 108.138.2.10, 108.138.2.107, 
+  108.138.2.173, 108.138.2.195, 13.33.187.11, 13.33.187.118, 13.33.187.8, 13.33.187.97, 
+  16.15.193.197, 16.182.105.241, 16.182.36.57, 18.173.208.27, 18.205.58.215, 18.210.224.106, 
+  18.210.237.67, 18.214.73.238, 18.215.121.104, 18.235.137.6, 18.245.31.12, 18.245.31.27, 
+  18.245.31.32, 18.245.31.4, 18.245.46.111, 18.245.46.26, 18.245.46.48, 18.245.46.57, 
+  18.245.65.219, 184.73.2.199, 20.242.71.86, 216.58.206.35, 23.20.24.103, 23.21.72.38, 
+  3.164.206.104, 3.164.206.24, 3.164.206.44, 3.164.206.82, 3.210.34.91, 3.216.131.42, 
+  3.217.63.64, 3.220.162.112, 3.220.88.34, 3.223.118.18, 3.224.136.153, 3.226.142.42, 
+  3.232.28.216, 3.5.19.158, 3.5.21.78, 3.5.27.82, 3.5.28.145, 3.5.3.152, 3.90.130.232, 
+  3.94.233.254, 34.149.116.40, 34.160.180.65, 34.192.84.222, 34.194.133.227, 34.194.98.162, 
+  34.196.68.247, 34.204.134.111, 34.206.99.28, 34.234.178.200, 34.49.67.247, 35.170.205.246, 
+  35.171.15.133, 35.175.29.25, 35.175.52.124, 35.186.247.156, 44.196.161.97, 44.196.208.245, 
+  44.196.40.213, 44.197.67.248, 44.207.23.49, 44.213.232.205, 44.215.173.28, 44.215.241.11, 
+  44.215.81.120, 44.218.77.59, 44.219.24.124, 50.17.228.6, 52.0.204.87, 52.2.57.208, 
+  52.20.141.54, 52.20.176.30, 52.201.0.25, 52.205.74.14, 52.206.28.154, 52.206.37.246, 
+  52.206.52.237, 52.21.163.217, 52.216.206.203, 52.216.212.73, 52.216.216.193, 52.216.34.153, 
+  52.216.44.49, 52.216.57.145, 52.217.166.193, 52.217.72.220, 52.22.237.251, 52.22.240.243, 
+  52.22.72.84, 52.222.214.59, 52.222.214.61, 52.222.214.81, 52.222.214.96, 52.4.149.218, 
+  52.4.27.153, 52.4.90.170, 52.6.164.248, 52.71.177.237, 52.72.170.38, 54.145.21.175, 
+  54.145.246.138, 54.158.120.253, 54.160.141.241, 54.164.168.225, 54.164.47.216, 54.209.35.129, 
+  54.226.55.104, 54.234.60.252, 54.235.166.245, 54.85.107.21, 54.85.238.241, 54.88.74.121, 
+  64.233.164.94, 72.44.50.168, 75.2.65.60, 77.88.21.24, 98.83.14.198, 99.83.251.244 
+}'
+
+# Проксирование доменов
+nft 'add rule xray prerouting ip saddr 192.168.123.235 ip daddr @proxy_ip ip protocol { tcp, udp } tproxy to :1083 meta mark set 1'
+
+# Настройка dnsmasq для работы с доменами
+for domain in \
+    "videobase" "fontawesome" "ggpht" "sourceforge" "openwrt" "git" "gitlub" "cloudflare" \
+    "github" "pro-market" "habr.com" "envato" "themeforest" "openai" "chatgpt" "chat" \
+    "claude" "discord" "nvidia" "geforce" "tiktok" "speedtest" "windhawk.net" "android" \
+    "dl.google.com" "2ip" "qbittorrent" "google" "cdninstagram.com" "ig.me" "instagram" \
+    "getbootstrap" "cursor" "anilibria.tv" "zed" "arshankhanifar.github.io" "epicgames" \
+    "xbox" "psyonix" "gamepass" "api.epicgames.dev"
+do
+    echo "server=/$domain/127.0.0.1#5353" >> /etc/dnsmasq.d/xray.conf
+done
+
+# Блокировка нежелательных доменов
+for block_domain in \
+    "an.yandex.ru" "mc.yandex.ru" "yandexadexchange.net" "adfox.ru" \
+    "ads.adfox.ru" "ads6.adfox.ru" "ads5.adfox.ru" "yabs.yandex.ru" "yastatic.net"
+do
+    echo "address=/$block_domain/" >> /etc/dnsmasq.d/blocked.conf
+done
+
+exit 0
+
+        </code></pre>
+
+        <h2>Скрипт для запуска Xray (/etc/init.d/xray)</h2>
+        <pre><code class="language-shell">#!/bin/sh /etc/rc.common
+
+START=00
+
+USE_PROCD=1
+
+PROG="/usr/bin/xray"
+CONFIG="/etc/xray/config.yaml"
+ASSETS="/usr/share/xray"
+
+start_service() {
+         procd_open_instance [xray]
+         procd_set_param command $PROG -c $CONFIG
+         procd_set_param respawn ${respawn_threshold:-3600} ${respawn_timeout:-5} ${respawn_retry:-5}
+         procd_set_param env XRAY_LOCATION_ASSET="$ASSETS"
+         procd_set_param limits core="unlimited"
+         procd_set_param limits nofile="1000000 1000000"
+         procd_set_param stdout 1
+         procd_set_param stderr 1
+         procd_set_param pidfile /var/run/xray.pid
+         procd_set_param term_timeout 60
+         procd_close_instance
+}</code></pre>
+
+        <h2>Примечания</h2>
+        <ol>
+            <li>Убедитесь, что на маршрутизаторе включена поддержка TProxy.</li>
+            <li>Перезапустите необходимые службы после настройки: <code>service dnsmasq restart</code> и <code>service xray restart</code>.</li>
+            <li>Используйте реальный домен и публичные ключи для настройки VLESS/Reality.</li>
+        </ol>
+    </div>
+</body>
+</html>

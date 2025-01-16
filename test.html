@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rain of Money</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #f4f4f4; /* Фоновый цвет */
+        }
+        .money-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1000;
+        }
+        .money {
+            position: absolute;
+            width: 50px;
+            animation: fall 5s linear, fadeOut 5s linear;
+            visibility: hidden; /* Скрыть до начала анимации */
+        }
+        @keyframes fall {
+            0% {
+                transform: translateY(calc(-5rem)) rotate(0deg);
+                visibility: visible; /* Появляется сразу перед падением */
+            }
+            100% {
+                transform: translateY(110vh) rotate(var(--rotate-end));
+            }
+        }
+        @keyframes fadeOut {
+            0%, 20% {
+                opacity: 1;
+            }
+            100% {
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="money-container" id="moneyContainer"></div>
+    <script>
+        const container = document.getElementById('moneyContainer');
+        const moneyImages = ['money1.webp', 'money2.webp', 'money3.webp']; // Замените на свои webp-картинки
+
+        function createMoney() {
+            for (let i = 0; i < 50; i++) {
+                const img = document.createElement('img');
+                img.src = moneyImages[Math.floor(Math.random() * moneyImages.length)];
+                img.className = 'money';
+
+                // Случайное горизонтальное положение, задержка, направление вращения
+                img.style.left = Math.random() * 100 + 'vw';
+                img.style.animationDelay = Math.random() * 5 + 's'; // Случайная задержка
+                img.style.animationDuration = '5s';
+                img.style.setProperty('--rotate-end', Math.random() > 0.5 ? '360deg' : '-360deg');
+
+                // Удаление элемента после завершения анимации
+                img.addEventListener('animationend', () => {
+                    img.remove();
+                });
+
+                container.appendChild(img);
+            }
+        }
+
+        createMoney();
+    </script>
+</body>
+</html>
